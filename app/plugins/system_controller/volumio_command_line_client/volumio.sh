@@ -1,4 +1,6 @@
 #!/bin/bash
+LOGDUMP="/var/tmp/logondemand"
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 
 doc() {
@@ -12,6 +14,7 @@ volume                             Gives Current Volume Information
 volume <desired volume>            Sets Volume at desired level 0-100
 volume mute                        Mutes
 volume unmute                      Unmutes
+volume toggle                      Mutes/Unmutes
 volume plus                        Increases Volume of one step
 volume minus                       Decreases Volume of one step
 seek plus                          Forwards 10 seconds in the song
@@ -25,6 +28,7 @@ random                             Toggles randomization of queue
 
 play
 pause
+toggle                             Toggles between play/pause
 next
 previous
 stop
@@ -33,9 +37,9 @@ clear
 
 [[VOLUMIO SERVICE CONTROL]]
 
-vstart                              Starts Volumio Service
-vstop                               Stops Volumio Service
-vrestart                            Restarts Volumio Service
+vstart                             Starts Volumio Service
+vstop                              Stops Volumio Service
+vrestart                           Restarts Volumio Service
 
 [[VOLUMIO DEVELOPMENT]]
 
@@ -50,6 +54,16 @@ plugin package                     compresses the plugin
 plugin publish                     publishes the plugin on git
 plugin install                     installs the plugin locally
 plugin update                      updates the plugin
+logdump <description>              dump logs to $LOGDUMP instead of uploading
+
+[[VOLUMIO UPDATER]]
+updater forceupdate                Updates to latest version
+updater factory                    Restores factory version and wipes all user data
+updater userdata                   Wipes all user data
+updater testmode                   Enables or disables Test mode, allowing to receive beta builds
+updater cleanupdate                Updates to latest version and cleans user data, allowing a start like a newly flashed image
+updater restorevolumio             Delete all manually edited files from /volumio folder, restoring a pristine volumio core system
+internet                           Enables or disbles internet access, accepted commands: on | off
 "
 
 }
@@ -57,11 +71,11 @@ plugin update                      updates the plugin
 #VOLUMIO SERVICE CONTROLS
 
 vstart() {
-echo volumio | sudo -S systemctl start volumio.service
+sudo systemctl start volumio.service
 }
 
 vstop() {
-echo volumio | sudo -S systemctl stop volumio.service
+sudo systemctl stop volumio.service
 }
 
 #VOLUMIO DEVELOPMENT
@@ -69,10 +83,11 @@ echo volumio | sudo -S systemctl stop volumio.service
 pull() {
 cd /
 echo "Stopping Volumio"
-echo volumio | sudo -S systemctl stop volumio.service
-echo volumio | sudo -S sh /volumio/app/plugins/system_controller/volumio_command_line_client/commands/pull.sh $1 $2 $3
+sudo systemctl stop volumio.service
+sudo /bin/sh /volumio/app/plugins/system_controller/volumio_command_line_client/commands/pull.sh "$@"
+
 echo "Pull completed, restarting Volumio"
-echo volumio | sudo -S systemctl start volumio.service
+sudo systemctl start volumio.service
 echo "Done"
 }
 
@@ -81,7 +96,11 @@ sh /volumio/app/plugins/system_controller/volumio_command_line_client/commands/d
 }
 
 kernelsource() {
-echo volumio | sudo -S sh /volumio/app/plugins/system_controller/volumio_command_line_client/commands/kernelsource.sh
+sudo /bin/sh /volumio/app/plugins/system_controller/volumio_command_line_client/commands/kernelsource.sh
+}
+
+internet() {
+/volumio/app/plugins/system_controller/volumio_command_line_client/commands/internet.sh "$@"
 }
 
 case "$1" in
@@ -127,15 +146,27 @@ case "$1" in
                /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=random"
             fi
             ;;
-        startairplay)
-           /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=startAirplay"
+        startairplayplayback)
+           /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=startAirplayPlayback"
         ;;
-        stopairplay)
-           /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=stopAirplay"
+        stopairplayplayback)
+           /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=stopAirplayPlayback"
         ;;
-        vstart)
-            vstart
-            ;;
+        airplayactive)
+           /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=airplayActive"
+        ;;
+        airplayinactive)
+           /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=airplayInactive"
+        ;;
+        usbattach)
+           /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=usbAudioAttach"
+        ;;
+        usbdetach)
+           /usr/bin/curl "http://127.0.0.1:3000/api/v1/commands/?cmd=usbAudioDetach"
+        ;;
+        scanaudioinputs)
+           /usr/bin/curl "http://127.0.0.1:3000/api/pluginEndpoint?endpoint=scanAudioInputs"
+        ;;
         vstart)
             vstart
             ;;
@@ -160,13 +191,19 @@ case "$1" in
             fi
             ;;
 	    pull)
-            pull $2 $3 $4
+            pull "$2" "$3" "$4"
             ;;
         dev)
         	dev
             ;;
 	    kernelsource)
 	        kernelsource
+            ;;
+            internet)
+                internet "$@"
+            ;;
+	    logdump)
+	        /usr/local/bin/node /volumio/logsubmit.js "$2" nosubmit
             ;;
         plugin)
             if [ "$2" != "" ]; then
@@ -199,7 +236,7 @@ correspondent folder in data"
                     echo "This command will update the plugin on your device"
                     echo ""
                 fi
-               /usr/local/bin/node /volumio/pluginhelper.js $2
+               /usr/local/bin/node /volumio/pluginhelper.js "$2"
             else
                 echo ""
                 echo "---- VOLUMIO PLUGIN HELPER ----"
@@ -214,6 +251,9 @@ correspondent folder in data"
                 echo "update    updates the plugin"
                 echo ""
             fi
+            ;;
+            updater)
+                /usr/local/bin/node /volumio/update-helper.js "$@"
             ;;
         *)
             doc
